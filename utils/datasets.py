@@ -390,7 +390,6 @@ class LoadImagesAndLabels(Dataset):
         self.stride = stride
         self.path = path
         self.albumentations = Albumentations() if augment else None
-
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
@@ -573,7 +572,8 @@ class LoadImagesAndLabels(Dataset):
                                                  translate=hyp['translate'],
                                                  scale=hyp['scale'],
                                                  shear=hyp['shear'],
-                                                 perspective=hyp['perspective'])
+                                                 perspective=hyp['perspective'],
+                                                 area_threshold=hyp['area_threshold'])
 
         nl = len(labels)  # number of labels
         if nl:
@@ -722,7 +722,8 @@ def load_mosaic(self, index):
                                        scale=self.hyp['scale'],
                                        shear=self.hyp['shear'],
                                        perspective=self.hyp['perspective'],
-                                       border=self.mosaic_border)  # border to remove
+                                       border=self.mosaic_border,
+                                       area_threshold=self.hyp['area_threshold'])  # border to remove
 
     return img4, labels4
 
@@ -796,7 +797,8 @@ def load_mosaic9(self, index):
                                        scale=self.hyp['scale'],
                                        shear=self.hyp['shear'],
                                        perspective=self.hyp['perspective'],
-                                       border=self.mosaic_border)  # border to remove
+                                       border=self.mosaic_border,
+                                       area_threshold=self.hyp['area_threshold'])  # border to remove
 
     return img9, labels9
 
@@ -1020,3 +1022,4 @@ def dataset_stats(path='coco128.yaml', autodownload=False, verbose=False, profil
     if verbose:
         print(json.dumps(stats, indent=2, sort_keys=False))
     return stats
+
