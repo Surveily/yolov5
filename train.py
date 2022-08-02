@@ -69,7 +69,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     # Directories
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
-    last, best = w / 'last.pt', w / 'best.pt'
+    last, temp_best = w / 'last.pt', w / 'best.pt'
     # Hyperparameters
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
@@ -102,10 +102,27 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     with torch_distributed_zero_first(LOCAL_RANK):
         data_dict = data_dict or check_dataset(data)  # check if None
     multi_val = False
+    best = []
+    validation_paths = []
+    best_fitnesses = []
     train_path, val_paths = data_dict['train'], data_dict['val']
     if type(val_paths) == list:
         print('More than one validation set detected')
         multi_val = True
+    for index, val_path in enumerate(val_paths if type(val_paths) == list else [val_paths]):
+        temp_val_path = ''.join([c for c in val_path if c.isalpha()]).lower()
+        if 'validyolo' in temp_val_path:
+            temp_val_path = val_path[:len(val_path)-11]
+        elif len(temp_val_path) >= 3:
+            temp_val_path = temp_val_path[:3]
+        else:
+            temp_val_path = str(index)
+        best.append(w.joinpath('best_' + str(Path(temp_val_path).stem) + '.pt'))
+        temp_val_path = Path(save_dir.joinpath('results_' + temp_val_path))
+        temp_val_path.mkdir(exist_ok=True)
+        temp_val_path.joinpath('classes').mkdir(exist_ok=True)
+        validation_paths.append(temp_val_path)
+        
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = ['item'] if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
     assert len(names) == nc, f'{len(names)} names found for nc={nc} dataset in {data}'  # check
@@ -216,17 +233,18 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                               workers=workers, image_weights=opt.image_weights, quad=opt.quad,
                                               prefix=colorstr('train: '))
     
-    augemntations = {str(number+1):str(transform) for number,transform in enumerate(dataset.albumentations.transform.transforms) if transform.p}
-    augemntations_to_copy = 'self.transform = A.Compose([' 
-    for i, transform in enumerate(augemntations.values()):
-        augemntations_to_copy += 'A.' + transform + ','
-    augemntations_to_copy = augemntations_to_copy[:-1]    
-    augemntations_to_copy += '], bbox_params=A.BboxParams(format=\'yolo\', label_fields=[\'class_labels\']))'
-    augemntations['Whole composition (to copy)'] = augemntations_to_copy
+    if dataset.albumentations.transform is not None:
+        augemntations = {str(number+1):str(transform) for number,transform in enumerate(dataset.albumentations.transform.transforms) if transform.p}
+        augemntations_to_copy = 'self.transform = A.Compose([' 
+        for i, transform in enumerate(augemntations.values()):
+            augemntations_to_copy += 'A.' + transform + ','
+        augemntations_to_copy = augemntations_to_copy[:-1]    
+        augemntations_to_copy += '], bbox_params=A.BboxParams(format=\'yolo\', label_fields=[\'class_labels\']))'
+        augemntations['Whole composition (to copy)'] = augemntations_to_copy
 
-    # Save augemntations
-    with open(save_dir / "augmentations.json", "w") as file:
-        json.dump(augemntations , file)
+        # Save augemntations
+        with open(save_dir / "augmentations.json", "w") as file:
+            json.dump(augemntations , file)
         
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
     nb = len(train_loader)  # number of batches
@@ -377,11 +395,11 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                                model=ema.ema,
                                                single_cls=single_cls,
                                                dataloader=val_loader,
-                                               save_dir=save_dir,
+                                               save_dir=validation_paths[val_index],
                                                plots=False,
                                                callbacks=callbacks,
                                                compute_loss=compute_loss)
-
+                    
                 # Update best mAP
                 fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
                 if fi > best_fitness:
@@ -401,10 +419,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
                     # Save last, best and delete
                     torch.save(ckpt, last)
-                    val_loader_str = ''.join([i for i in val_paths[val_index] if i.isalpha()])
-                    new_best = best.parent.joinpath(Path(best.stem + '_'+val_loader_str[:2]+'_'+str(val_index)+best.suffix))
                     if best_fitness == fi:
-                        torch.save(ckpt, new_best)
+                        torch.save(ckpt, best[val_index])
                     if (epoch > 0) and (opt.save_period > 0) and (epoch % opt.save_period == 0):
                         torch.save(ckpt, w / f'epoch{epoch}.pt')
                     del ckpt
@@ -428,27 +444,28 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     # end training -----------------------------------------------------------------------------------------------------
     if RANK in [-1, 0]:
         LOGGER.info(f'\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.')
-        for f in last, best:
-            if f.exists():
-                strip_optimizer(f)  # strip optimizers
-                if f is best:
-                    LOGGER.info(f'\nValidating {f}...')
-                    results, _, _ = val.run(data_dict,
-                                            batch_size=batch_size // WORLD_SIZE * 2,
-                                            imgsz=imgsz,
-                                            model=attempt_load(f, device).half(),
-                                            iou_thres=0.65 if is_coco else 0.60,  # best pycocotools results at 0.65
-                                            single_cls=single_cls,
-                                            dataloader=val_loader,
-                                            save_dir=save_dir,
-                                            save_json=is_coco,
-                                            verbose=True,
-                                            plots=True,
-                                            callbacks=callbacks,
-                                            compute_loss=compute_loss)  # val best model with plots
+        for best_index, best_model in enumerate(best):
+            for f in last, best_model:
+                if f.exists():
+                    strip_optimizer(f)  # strip optimizers
+                    if f is best_model:
+                        LOGGER.info(f'\nValidating {f}...')
+                        results, _, _ = val.run(data_dict,
+                                                batch_size=batch_size // WORLD_SIZE * 2,
+                                                imgsz=imgsz,
+                                                model=attempt_load(f, device).half(),
+                                                iou_thres=0.65 if is_coco else 0.60,  # best pycocotools results at 0.65
+                                                single_cls=single_cls,
+                                                dataloader=val_loader,
+                                                save_dir=validation_paths[best_index],
+                                                save_json=is_coco,
+                                                verbose=True,
+                                                plots=True,
+                                                callbacks=callbacks,
+                                                compute_loss=compute_loss)  # val best model with plots
 
-        callbacks.run('on_train_end', last, best, plots, epoch)
-        LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
+            callbacks.run('on_train_end', last, best_model, plots, epoch)
+            LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
 
     torch.cuda.empty_cache()
     return results

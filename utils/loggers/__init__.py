@@ -78,7 +78,9 @@ class Loggers():
                         warnings.simplefilter('ignore')  # suppress jit trace warning
                         self.tb.add_graph(torch.jit.trace(de_parallel(model), imgs[0:1], strict=False), [])
             if ni < 16:
-                f = self.save_dir / f'train_batch{ni}.jpg'  # filename
+                new_save_dir = self.save_dir.joinpath('train_batches')
+                new_save_dir.mkdir(exist_ok = True)
+                f = new_save_dir / f'train_batch{ni}.jpg'  # filename
                 Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
             if self.wandb and ni == 10:
                 files = sorted(self.save_dir.glob('train*.jpg'))
@@ -127,7 +129,7 @@ class Loggers():
     def on_train_end(self, last, best, plots, epoch):
         # Callback runs on training end
         if plots:
-            plot_results(file=self.save_dir / 'results.csv')  # save results.png
+            plot_results(file=self.save_dir / 'results.csv', best=best)  # save results.png
         files = ['results.png', 'confusion_matrix.png', *[f'{x}_curve.png' for x in ('F1', 'PR', 'P', 'R')]]
         files = [(self.save_dir / f) for f in files if (self.save_dir / f).exists()]  # filter
 

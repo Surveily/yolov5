@@ -394,7 +394,7 @@ def plot_evolve(evolve_csv='path/to/evolve.csv'):  # from utils.plots import *; 
     print(f'Saved {f}')
 
 
-def plot_results(file='path/to/results.csv', dir=''):
+def plot_results(file='path/to/results.csv', best='', dir=''):
     # Plot training results.csv. Usage: from utils.plots import *; plot_results('path/to/results.csv')
     save_dir = Path(file).parent if file else Path(dir)
     fig, ax = plt.subplots(2, 5, figsize=(12, 6), tight_layout=True)
@@ -404,6 +404,7 @@ def plot_results(file='path/to/results.csv', dir=''):
     for fi, f in enumerate(files):
         try:
             data = pd.read_csv(f)
+            max_epoch = max(np.array(data)[:,0])
             s = [x.strip() for x in data.columns]
             x = data.values[:, 0]
             for i, j in enumerate([1, 2, 3, 4, 5, 8, 9, 10, 6, 7]):
