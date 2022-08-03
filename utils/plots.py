@@ -219,7 +219,7 @@ def plot_lr_scheduler(optimizer, scheduler, epochs=300, save_dir=''):
     plt.plot(y, '.-', label='LR')
     plt.xlabel('epoch')
     plt.ylabel('LR')
-    plt.grid()
+#     plt.grid()
     plt.xlim(0, epochs)
     plt.ylim(0)
     plt.savefig(Path(save_dir) / 'LR.png', dpi=200)
@@ -281,7 +281,7 @@ def plot_val_study(file='', dir='', x=None):  # from utils.plots import *; plot_
     ax2.plot(1E3 / np.array([209, 140, 97, 58, 35, 18]), [34.6, 40.5, 43.0, 47.5, 49.7, 51.5],
              'k.-', linewidth=2, markersize=8, alpha=.25, label='EfficientDet')
 
-    ax2.grid(alpha=0.2)
+#     ax2.grid(alpha=0.2)
     ax2.set_yticks(np.arange(20, 60, 5))
     ax2.set_xlim(0, 57)
     ax2.set_ylim(25, 55)
@@ -397,29 +397,35 @@ def plot_evolve(evolve_csv='path/to/evolve.csv'):  # from utils.plots import *; 
 def plot_results(file='path/to/results.csv', best='', dir=''):
     # Plot training results.csv. Usage: from utils.plots import *; plot_results('path/to/results.csv')
     save_dir = Path(file).parent if file else Path(dir)
-    fig, ax = plt.subplots(2, 5, figsize=(12, 6), tight_layout=True)
-    ax = ax.ravel()
     files = list(save_dir.glob('results*.csv'))
+    names = [name.stem[8:] for name in list(save_dir.glob('results*[!.csv!.png]'))]
     assert len(files), f'No results.csv files found in {save_dir.resolve()}, nothing to plot.'
     for fi, f in enumerate(files):
         try:
             data = pd.read_csv(f)
-            max_epoch = max(np.array(data)[:,0])
-            s = [x.strip() for x in data.columns]
-            x = data.values[:, 0]
-            for i, j in enumerate([1, 2, 3, 4, 5, 8, 9, 10, 6, 7]):
-                y = data.values[:, j]
-                # y[y == 0] = np.nan  # don't show zero values
-                ax[i].plot(x, y, marker='.', label=f.stem, linewidth=2, markersize=8)
-                ax[i].set_title(s[j], fontsize=12)
-                # if j in [8, 9, 10]:  # share train and val loss y axes
-                #     ax[i].get_shared_y_axes().join(ax[i], ax[i - 5])
+            first_column = np.array(data)[:,0]
+            max_epochs = max(first_column) + 1
+            number_of_sets = math.floor(len(first_column) / max_epochs)
+            print('Number of sets: ',number_of_sets)
+
+            for sets in range(number_of_sets):
+                fig, ax = plt.subplots(2, 5, figsize=(12, 6), tight_layout=True)
+                ax = ax.ravel()
+                s = [x.strip() for x in data.columns]
+                x = data.values[:, 0]
+                for i, j in enumerate([1, 2, 3, 4, 5, 8, 9, 10, 6, 7]):
+                    y = []
+                    for index, y_value in enumerate(data.values[:, j]):
+                        if index % number_of_sets == sets:
+                            y.append(y_value)       
+                    # y[y == 0] = np.nan  # don't show zero values
+                    ax[i].plot([x for x in range(len(y))], y, marker='.', label=f.stem, linewidth=2, markersize=8)
+                    ax[i].set_title(s[j], fontsize=12)
+                ax[1].legend()
+                fig.savefig(save_dir / 'results_{}.png'.format(names[sets]), dpi=200)
+                plt.close()
         except Exception as e:
             print(f'Warning: Plotting error for {f}: {e}')
-    ax[1].legend()
-    fig.savefig(save_dir / 'results.png', dpi=200)
-    plt.close()
-
 
 def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detect/exp')):
     """

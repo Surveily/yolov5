@@ -465,7 +465,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                                 compute_loss=compute_loss)  # val best model with plots
 
             callbacks.run('on_train_end', last, best_model, plots, epoch)
-            LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
+            LOGGER.info(f"Results saved to {colorstr('bold', validation_paths[best_index])}")
 
     torch.cuda.empty_cache()
     return results
