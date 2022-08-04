@@ -335,6 +335,7 @@ def plot_labels(labels, names=(), save_dir=Path('')):
     plt.savefig(save_dir / 'labels.jpg', dpi=200)
     matplotlib.use('Agg')
     plt.close()
+    plt.style.use('default')
 
 
 def profile_idetection(start=0, stop=0, labels=(), save_dir=''):

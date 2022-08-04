@@ -456,7 +456,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                                 model=attempt_load(f, device).half(),
                                                 iou_thres=0.65 if is_coco else 0.60,  # best pycocotools results at 0.65
                                                 single_cls=single_cls,
-                                                dataloader=val_loader,
+                                                dataloader=val_loaders[best_index],
                                                 save_dir=validation_paths[best_index],
                                                 save_json=is_coco,
                                                 verbose=True,

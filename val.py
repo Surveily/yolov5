@@ -18,6 +18,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -109,6 +110,8 @@ def run(data,
         callbacks=Callbacks(),
         compute_loss=None,
         ):
+    plt.style.use('default')
+    
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -251,35 +254,32 @@ def run(data,
     print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
 
     # Print results per class
-    if training and (nc < 50 and nc > 1 and len(stats)):
+    if training and not verbose and (nc < 50 and nc > 1 and len(stats)):
         for i, c in enumerate(ap_class):
             save_path = save_dir.joinpath('classes').joinpath(names[c]+'.csv')
-            df = pd.DataFrame({'mAP.5': [ap50[i]],
-                           'mAP': [ap[i]]})
-            if not save_path.exists():
-                df.to_csv(str(save_path), mode='a', index=False, header=True)
-            else:
-                df.to_csv(str(save_path), mode='a', index=False, header=False)
+            df = pd.DataFrame({'mAP.5': [ap50[i]], 'mAP': [ap[i]]})
+            df.to_csv(str(save_path), mode='a', index=False, header=not save_path.exists())
                 
-    if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+    if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):        
+        figure(figsize=(16, 12), dpi=150) 
         last_results = []
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
             load_path = save_dir.joinpath('classes').joinpath(names[c]+'.csv')
             df = pd.read_csv(str(load_path))
+            x = np.arange(df.shape[0])
             last_results.append((names[c], np.array(df.tail(1))))
-            df.plot(y=["mAP.5", "mAP"])   
-            plt.savefig(load_path.parent.joinpath(str(names[c])))
-            plt.figure().clear()
-            plt.close()
-            plt.cla()
-            plt.clf()
+            plt.plot(x, df['mAP.5'], label='mAP.5{}'.format(names[c]))
+            plt.plot(x, df['mAP'], label='mAP{}'.format(names[c]))
+        plt.legend(loc="upper left")
+        plt.savefig(load_path.parent.joinpath('AllClasses.png'))
+        reset_plot()
         
         class_names = [item[0] for item in last_results]
         mAP5s = np.multiply([item[1][0][0] for item in last_results], 100)
         mAPs = np.multiply([item[1][0][1] for item in last_results], 100)
         
-        x = np.arange(len(names))  # the label locations
+        x = np.arange(len(class_names))  # the label locations
         width = 0.35  # the width of the bars
         
         fig, ax = plt.subplots(figsize=(20, 10))
@@ -296,11 +296,7 @@ def run(data,
         ax.bar_label(rects1, padding=3)
         ax.bar_label(rects2, padding=3)
         plt.savefig(save_dir.joinpath('mAP_summary.png'))
-        plt.figure().clear()
-        plt.close()
-        plt.cla()
-        plt.clf()  
-            
+        reset_plot()
     
     # Print speeds
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
@@ -349,7 +345,13 @@ def run(data,
         maps[c] = ap[i]
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
-
+def reset_plot():
+    plt.figure().clear()
+    plt.close()
+    plt.cla()
+    plt.clf()  
+    figure(figsize=(6.4, 4.8), dpi=100) 
+    
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
