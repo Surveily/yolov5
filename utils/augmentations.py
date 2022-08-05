@@ -21,7 +21,16 @@ class Albumentations:
         try:
             import albumentations as A
             check_version(A.__version__, '1.0.3')  # version requirement
-
+#             self.transform = A.Compose([
+#                             A.RandomBrightnessContrast(always_apply=False, p=0.7, brightness_limit=(-0.1, 0.1), contrast_limit=(-0.1, 0.1), brightness_by_max=True),
+#                             A.JpegCompression(always_apply=False, p=0.7, quality_lower=40, quality_upper=100),
+#                             A.GaussNoise(always_apply=False, p=0.6, mean=-21.0, var_limit=(40.0, 150)),
+#                             A.OneOf([
+#                                 A.Blur(always_apply=False, p=0.5, blur_limit=(3, 5)),
+#                                 A.MotionBlur(always_apply=False, p=0.5, blur_limit=(3, 5)),
+#                             ], p=0.7),
+#                             A.Cutout(always_apply=False, p=0.7, num_holes=32, max_h_size=8, max_w_size=8)
+#                         ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
             self.transform = A.Compose()
 
             logging.info(colorstr('albumentations: ') + ', '.join(f'{x}' for x in self.transform.transforms if x.p))
@@ -115,7 +124,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=False, scale
 
 
 def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, scale=.1, shear=10, perspective=0.0,
-                       border=(0, 0)):
+                       border=(0, 0), area_threshold=0.01):
     # torchvision.transforms.RandomAffine(degrees=(-10, 10), translate=(.1, .1), scale=(.9, 1.1), shear=(-10, 10))
     # targets = [cls, xyxy]
 
@@ -196,7 +205,7 @@ def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, sc
             new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
 
         # filter candidates
-        i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.01 if use_segments else 0.10)
+        i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=area_threshold if use_segments else area_threshold)
         targets = targets[i]
         targets[:, 1:5] = new[i]
 

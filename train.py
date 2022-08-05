@@ -13,6 +13,7 @@ import os
 import random
 import sys
 import time
+import json
 from copy import deepcopy
 from pathlib import Path
 
@@ -68,8 +69,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     # Directories
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
-    last, best = w / 'last.pt', w / 'best.pt'
-
+    last, temp_best = w / 'last.pt', w / 'best.pt'
     # Hyperparameters
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
@@ -101,7 +101,29 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     init_seeds(1 + RANK)
     with torch_distributed_zero_first(LOCAL_RANK):
         data_dict = data_dict or check_dataset(data)  # check if None
-    train_path, val_path = data_dict['train'], data_dict['val']
+    multi_val = False
+    best = []
+    best_fitnesses = []
+    validation_paths = []
+    train_path, val_paths = data_dict['train'], data_dict['val']
+    if type(val_paths) == list:
+        print('Detected {} validation sets'.format(len(val_paths)))
+        multi_val = True
+    for index, val_path in enumerate(val_paths if type(val_paths) == list else [val_paths]):
+        temp_val_path = ''.join([c for c in val_path if c.isalpha()]).lower()
+        if 'validyolo' in temp_val_path:
+            temp_val_path = val_path[:len(val_path)-11]
+        elif len(temp_val_path) >= 3:
+            temp_val_path = temp_val_path[:3]
+        else:
+            temp_val_path = str(index)
+        best.append(w.joinpath('best_' + str(Path(temp_val_path).stem) + '.pt'))
+        temp_val_path = Path(save_dir.joinpath('results_' + temp_val_path))
+        temp_val_path.mkdir(exist_ok=True)
+        temp_val_path.joinpath('classes').mkdir(exist_ok=True)
+        validation_paths.append(temp_val_path)
+        best_fitnesses.append(0)
+        
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = ['item'] if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
     assert len(names) == nc, f'{len(names)} names found for nc={nc} dataset in {data}'  # check
@@ -211,17 +233,33 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                               hyp=hyp, augment=True, cache=opt.cache, rect=opt.rect, rank=LOCAL_RANK,
                                               workers=workers, image_weights=opt.image_weights, quad=opt.quad,
                                               prefix=colorstr('train: '))
+    
+    if dataset.albumentations.transform is not None:
+        augemntations = {str(number+1):str(transform) for number,transform in enumerate(dataset.albumentations.transform.transforms) if transform.p}
+        augemntations_to_copy = 'self.transform = A.Compose([' 
+        for i, transform in enumerate(augemntations.values()):
+            augemntations_to_copy += 'A.' + transform + ','
+        augemntations_to_copy = augemntations_to_copy[:-1]    
+        augemntations_to_copy += '], bbox_params=A.BboxParams(format=\'yolo\', label_fields=[\'class_labels\']))'
+        augemntations['Whole composition (to copy)'] = augemntations_to_copy
+
+        # Save augemntations
+        with open(save_dir / "augmentations.json", "w") as file:
+            json.dump(augemntations , file)
+        
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
     nb = len(train_loader)  # number of batches
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
 
     # Process 0
     if RANK in [-1, 0]:
-        val_loader = create_dataloader(val_path, imgsz, batch_size // WORLD_SIZE * 2, gs, single_cls,
+        val_loaders = []
+        for val_path in (val_paths if multi_val else [val_paths]):
+            val_loaders.append(create_dataloader(val_path, imgsz, batch_size // WORLD_SIZE * 2, gs, single_cls,
                                        hyp=hyp, cache=None if noval else opt.cache, rect=True, rank=-1,
                                        workers=workers, pad=0.5,
-                                       prefix=colorstr('val: '))[0]
-
+                                       prefix=colorstr('val: '))[0])
+    
         if not resume:
             labels = np.concatenate(dataset.labels, 0)
             # c = torch.tensor(labels[:, 0])  # classes
@@ -349,43 +387,47 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             callbacks.run('on_train_epoch_end', epoch=epoch)
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
-            if not noval or final_epoch:  # Calculate mAP
-                results, maps, _ = val.run(data_dict,
-                                           batch_size=batch_size // WORLD_SIZE * 2,
-                                           imgsz=imgsz,
-                                           model=ema.ema,
-                                           single_cls=single_cls,
-                                           dataloader=val_loader,
-                                           save_dir=save_dir,
-                                           plots=False,
-                                           callbacks=callbacks,
-                                           compute_loss=compute_loss)
+            
+            for val_index, val_loader in enumerate(val_loaders):
+                if not noval or final_epoch:  # Calculate mAP
+                    results, maps, _ = val.run(data_dict,
+                                               batch_size=batch_size // WORLD_SIZE * 2,
+                                               imgsz=imgsz,
+                                               model=ema.ema,
+                                               single_cls=single_cls,
+                                               dataloader=val_loader,
+                                               save_dir=validation_paths[val_index],
+                                               plots=False,
+                                               callbacks=callbacks,
+                                               compute_loss=compute_loss)
+                    
+                # Update best mAP
+                fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+                if fi > best_fitnesses[val_index]:
+                    best_fitnesses[val_index] = fi
+                if fi > best_fitness:
+                    best_fitness = fi
+                log_vals = list(mloss) + list(results) + lr
+                callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitnesses[val_index], fi)
 
-            # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
-            if fi > best_fitness:
-                best_fitness = fi
-            log_vals = list(mloss) + list(results) + lr
-            callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
+                # Save model
+                if (not nosave) or (final_epoch and not evolve):  # if save
+                    ckpt = {'epoch': epoch,
+                            'best_fitness': best_fitness,
+                            'model': deepcopy(de_parallel(model)).half(),
+                            'ema': deepcopy(ema.ema).half(),
+                            'updates': ema.updates,
+                            'optimizer': optimizer.state_dict(),
+                            'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
 
-            # Save model
-            if (not nosave) or (final_epoch and not evolve):  # if save
-                ckpt = {'epoch': epoch,
-                        'best_fitness': best_fitness,
-                        'model': deepcopy(de_parallel(model)).half(),
-                        'ema': deepcopy(ema.ema).half(),
-                        'updates': ema.updates,
-                        'optimizer': optimizer.state_dict(),
-                        'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None}
-
-                # Save last, best and delete
-                torch.save(ckpt, last)
-                if best_fitness == fi:
-                    torch.save(ckpt, best)
-                if (epoch > 0) and (opt.save_period > 0) and (epoch % opt.save_period == 0):
-                    torch.save(ckpt, w / f'epoch{epoch}.pt')
-                del ckpt
-                callbacks.run('on_model_save', last, epoch, final_epoch, best_fitness, fi)
+                    # Save last, best and delete
+                    torch.save(ckpt, last)
+                    if best_fitnesses[val_index] == fi:
+                        torch.save(ckpt, best[val_index])
+                    if (epoch > 0) and (opt.save_period > 0) and (epoch % opt.save_period == 0):
+                        torch.save(ckpt, w / f'epoch{epoch}.pt')
+                    del ckpt
+                    callbacks.run('on_model_save', last, epoch, final_epoch, best_fitness, fi)
 
             # Stop Single-GPU
             if RANK == -1 and stopper(epoch=epoch, fitness=fi):
@@ -405,27 +447,28 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     # end training -----------------------------------------------------------------------------------------------------
     if RANK in [-1, 0]:
         LOGGER.info(f'\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.')
-        for f in last, best:
-            if f.exists():
-                strip_optimizer(f)  # strip optimizers
-                if f is best:
-                    LOGGER.info(f'\nValidating {f}...')
-                    results, _, _ = val.run(data_dict,
-                                            batch_size=batch_size // WORLD_SIZE * 2,
-                                            imgsz=imgsz,
-                                            model=attempt_load(f, device).half(),
-                                            iou_thres=0.65 if is_coco else 0.60,  # best pycocotools results at 0.65
-                                            single_cls=single_cls,
-                                            dataloader=val_loader,
-                                            save_dir=save_dir,
-                                            save_json=is_coco,
-                                            verbose=True,
-                                            plots=True,
-                                            callbacks=callbacks,
-                                            compute_loss=compute_loss)  # val best model with plots
+        for best_index, best_model in enumerate(best):
+            for f in last, best_model:
+                if f.exists():
+                    strip_optimizer(f)  # strip optimizers
+                    if f is best_model:
+                        LOGGER.info(f'\nValidating {f}...')
+                        results, _, _ = val.run(data_dict,
+                                                batch_size=batch_size // WORLD_SIZE * 2,
+                                                imgsz=imgsz,
+                                                model=attempt_load(f, device).half(),
+                                                iou_thres=0.65 if is_coco else 0.60,  # best pycocotools results at 0.65
+                                                single_cls=single_cls,
+                                                dataloader=val_loaders[best_index],
+                                                save_dir=validation_paths[best_index],
+                                                save_json=is_coco,
+                                                verbose=True,
+                                                plots=True,
+                                                callbacks=callbacks,
+                                                compute_loss=compute_loss)  # val best model with plots
 
-        callbacks.run('on_train_end', last, best, plots, epoch)
-        LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
+            callbacks.run('on_train_end', last, best_model, plots, epoch)
+            LOGGER.info(f"Results saved to {colorstr('bold', validation_paths[best_index])}")
 
     torch.cuda.empty_cache()
     return results
@@ -618,3 +661,4 @@ def run(**kwargs):
 if __name__ == "__main__":
     opt = parse_opt()
     main(opt)
+
