@@ -103,6 +103,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         data_dict = data_dict or check_dataset(data)  # check if None
     multi_val = False
     best = []
+    best_fitnesses = []
     validation_paths = []
     train_path, val_paths = data_dict['train'], data_dict['val']
     if type(val_paths) == list:
@@ -121,6 +122,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         temp_val_path.mkdir(exist_ok=True)
         temp_val_path.joinpath('classes').mkdir(exist_ok=True)
         validation_paths.append(temp_val_path)
+        best_fitnesses.append(0)
         
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = ['item'] if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
@@ -401,10 +403,12 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                     
                 # Update best mAP
                 fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+                if fi > best_fitnesses[val_index]:
+                    best_fitnesses[val_index] = fi
                 if fi > best_fitness:
                     best_fitness = fi
                 log_vals = list(mloss) + list(results) + lr
-                callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
+                callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitnesses[val_index], fi)
 
                 # Save model
                 if (not nosave) or (final_epoch and not evolve):  # if save
@@ -418,7 +422,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
                     # Save last, best and delete
                     torch.save(ckpt, last)
-                    if best_fitness == fi:
+                    if best_fitnesses[val_index] == fi:
                         torch.save(ckpt, best[val_index])
                     if (epoch > 0) and (opt.save_period > 0) and (epoch % opt.save_period == 0):
                         torch.save(ckpt, w / f'epoch{epoch}.pt')
