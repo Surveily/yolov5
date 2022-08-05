@@ -21,17 +21,17 @@ class Albumentations:
         try:
             import albumentations as A
             check_version(A.__version__, '1.0.3')  # version requirement
-            self.transform = A.Compose([
-                            A.RandomBrightnessContrast(always_apply=False, p=0.7, brightness_limit=(-0.1, 0.1), contrast_limit=(-0.1, 0.1), brightness_by_max=True),
-                            A.JpegCompression(always_apply=False, p=0.7, quality_lower=40, quality_upper=100),
-                            A.GaussNoise(always_apply=False, p=0.6, mean=-21.0, var_limit=(40.0, 150)),
-                            A.OneOf([
-                                A.Blur(always_apply=False, p=0.5, blur_limit=(3, 5)),
-                                A.MotionBlur(always_apply=False, p=0.5, blur_limit=(3, 5)),
-                            ], p=0.7),
-                            A.Cutout(always_apply=False, p=0.7, num_holes=32, max_h_size=8, max_w_size=8)
-                        ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
-#             self.transform = A.Compose()
+#             self.transform = A.Compose([
+#                             A.RandomBrightnessContrast(always_apply=False, p=0.7, brightness_limit=(-0.1, 0.1), contrast_limit=(-0.1, 0.1), brightness_by_max=True),
+#                             A.JpegCompression(always_apply=False, p=0.7, quality_lower=40, quality_upper=100),
+#                             A.GaussNoise(always_apply=False, p=0.6, mean=-21.0, var_limit=(40.0, 150)),
+#                             A.OneOf([
+#                                 A.Blur(always_apply=False, p=0.5, blur_limit=(3, 5)),
+#                                 A.MotionBlur(always_apply=False, p=0.5, blur_limit=(3, 5)),
+#                             ], p=0.7),
+#                             A.Cutout(always_apply=False, p=0.7, num_holes=32, max_h_size=8, max_w_size=8)
+#                         ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
+            self.transform = A.Compose()
 
             logging.info(colorstr('albumentations: ') + ', '.join(f'{x}' for x in self.transform.transforms if x.p))
         except ImportError:  # package not installed, skip
