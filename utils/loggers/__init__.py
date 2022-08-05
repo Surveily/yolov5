@@ -109,7 +109,6 @@ class Loggers():
             file = self.save_dir / 'results.csv'
             n = len(x) + 1  # number of cols
             s = '' if file.exists() else (('%20s,' * n % tuple(['epoch'] + self.keys)).rstrip(',') + '\n')  # add header
-            print(('%20.5g,' * n % tuple([epoch] + vals)).rstrip(',') + '\n')
             with open(file, 'a') as f:
                 f.write(s + ('%20.5g,' * n % tuple([epoch] + vals)).rstrip(',') + '\n')
 
@@ -130,7 +129,7 @@ class Loggers():
     def on_train_end(self, last, best, plots, epoch):
         # Callback runs on training end
         if plots:
-            plot_results(file=self.save_dir / 'results.csv', best=best)  # save results.png
+            plot_results(file=self.save_dir / 'results.csv')  # save results.png
         files = ['results.png', 'confusion_matrix.png', *[f'{x}_curve.png' for x in ('F1', 'PR', 'P', 'R')]]
         files = [(self.save_dir / f) for f in files if (self.save_dir / f).exists()]  # filter
 

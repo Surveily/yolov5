@@ -104,10 +104,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     multi_val = False
     best = []
     validation_paths = []
-    best_fitnesses = []
     train_path, val_paths = data_dict['train'], data_dict['val']
     if type(val_paths) == list:
-        print('More than one validation set detected')
+        print('Detected {} validation sets'.format(len(val_paths)))
         multi_val = True
     for index, val_path in enumerate(val_paths if type(val_paths) == list else [val_paths]):
         temp_val_path = ''.join([c for c in val_path if c.isalpha()]).lower()

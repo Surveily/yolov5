@@ -18,7 +18,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import figure
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -261,7 +260,7 @@ def run(data,
             df.to_csv(str(save_path), mode='a', index=False, header=not save_path.exists())
                 
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):        
-        figure(figsize=(16, 12), dpi=150) 
+        plt.figure(figsize=(16, 12), dpi=150) 
         last_results = []
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
@@ -350,7 +349,7 @@ def reset_plot():
     plt.close()
     plt.cla()
     plt.clf()  
-    figure(figsize=(6.4, 4.8), dpi=100) 
+    plt.figure(figsize=(6.4, 4.8), dpi=100) 
     
 def parse_opt():
     parser = argparse.ArgumentParser()
