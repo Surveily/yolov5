@@ -290,7 +290,7 @@ def run(data,
         # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel('Percentage')
         ax.set_title('mAP by class')
-        plt.xticks([r + (width * 0.1) for r in range(len(class_names))], class_names)
+        plt.xticks([r + (width * 0.1) for r in range(len(class_names))], class_names, rotation=90)
         ax.legend()
 
         ax.bar_label(rects1, padding=3)
