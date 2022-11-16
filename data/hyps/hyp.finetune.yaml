@@ -37,3 +37,10 @@ fliplr: 0.5
 mosaic: 1.0
 mixup: 0.243
 copy_paste: 0.0
+
+# Custom Params
+area_threshold: 0.3 # area threshold for random perspective
+max_mistakes_size: 7680 # image size for mistakes mosaic
+max_mistakes_subplots: 64 # subimages in mistakes mosaic
+min_mistakes_iou: 0.5 # mistakes minimum iou for match
+min_mistakes_confidence: 0.5 # mistakes minimum confidence for checking

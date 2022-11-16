@@ -34,6 +34,7 @@ from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, time_sync
 from utils.callbacks import Callbacks
+from yolo_analyze_service import YoloAnalyzeService
 
 
 def save_one_txt(predn, save_conf, shape, file):
@@ -108,6 +109,10 @@ def run(data,
         plots=True,
         callbacks=Callbacks(),
         compute_loss=None,
+        max_mistakes_size = 7680,
+        max_mistakes_subplots = 64,
+        minimum_mistakes_iou = 0.5,
+        minimum_mistakes_confidence = 0.5,
         ):
     plt.style.use('default')
     
@@ -150,7 +155,7 @@ def run(data,
     # Dataloader
     if not training:
         if device.type != 'cpu':
-            model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
+            model(torch.zeros(1, 1, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
         pad = 0.0 if task == 'speed' else 0.5
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
         dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls, pad=pad, rect=True,
@@ -229,14 +234,25 @@ def run(data,
 
         # Plot images
         if plots and batch_i < 16:
+            max_size=1920
+            max_subplots=16
+
             valid_labels_path = save_dir.joinpath('labels')
             valid_predictions_path = save_dir.joinpath('pred')
             valid_labels_path.mkdir(exist_ok=True)
             valid_predictions_path.mkdir(exist_ok=True)
             f = valid_labels_path / f'val_batch{batch_i}_labels.jpg'  # labels
-            Thread(target=plot_images, args=(img, targets, paths, f, names), daemon=True).start()
+            Thread(target=plot_images, args=(img, targets, paths, f, names, max_size, max_subplots), daemon=True).start()
             f = valid_predictions_path / f'val_batch{batch_i}_pred.jpg'  # predictions
-            Thread(target=plot_images, args=(img, output_to_target(out), paths, f, names), daemon=True).start()
+            Thread(target=plot_images, args=(img, output_to_target(out), paths, f, names, max_size, max_subplots), daemon=True).start()
+        
+        yolo_analyzer = YoloAnalyzeService(minimum_mistakes_iou, minimum_mistakes_confidence)
+        mistakes = yolo_analyzer.analyze_batch(targets.cpu().numpy(), output_to_target(out))
+        mistakes_path = save_dir.joinpath("mistakes")
+        mistakes_path.mkdir(exist_ok=True)
+        f = mistakes_path / f'val_batch{batch_i}_mistakes.jpg'
+
+        Thread(target=plot_images, args=(img, mistakes, paths, f, names, max_mistakes_size, max_mistakes_subplots), daemon=True).start()
 
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy

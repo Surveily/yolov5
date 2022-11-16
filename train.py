@@ -399,7 +399,12 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                                save_dir=validation_paths[val_index],
                                                plots=False,
                                                callbacks=callbacks,
-                                               compute_loss=compute_loss)
+                                               compute_loss=compute_loss,
+                                               max_mistakes_size=hyp['max_mistakes_size'],
+                                               max_mistakes_subplots=hyp['max_mistakes_subplots'],
+                                               minimum_mistakes_iou=hyp['minimum_mistakes_iou'],
+                                               minimum_mistakes_confidence=hyp['minimum_mistakes_confidence']
+                                               )
                     
                 # Update best mAP
                 fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
