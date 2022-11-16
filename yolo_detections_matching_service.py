@@ -1,7 +1,3 @@
-"""
-Copyright (c) Surveily. All rights reserved.
-"""
-
 from collections import namedtuple
 from typing import Tuple
 

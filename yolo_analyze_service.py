@@ -1,6 +1,3 @@
-"""
-Copyright (c) Surveily. All rights reserved.
-"""
 from typing import List
 
 import numpy as np
