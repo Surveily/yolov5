@@ -400,8 +400,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                                plots=False,
                                                callbacks=callbacks,
                                                compute_loss=compute_loss,
-                                               max_mistakes_size=hyp['max_mistakes_size'],
-                                               max_mistakes_subplots=hyp['max_mistakes_subplots'],
+                                               maximum_mistakes_size=hyp['maximum_mistakes_size'],
+                                               maximum_mistakes_subplots=hyp['maximum_mistakes_subplots'],
                                                minimum_mistakes_iou=hyp['minimum_mistakes_iou'],
                                                minimum_mistakes_confidence=hyp['minimum_mistakes_confidence']
                                                )

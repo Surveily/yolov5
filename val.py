@@ -109,8 +109,8 @@ def run(data,
         plots=True,
         callbacks=Callbacks(),
         compute_loss=None,
-        max_mistakes_size = 7680,
-        max_mistakes_subplots = 64,
+        maximum_mistakes_size = 7680,
+        maximum_mistakes_subplots = 64,
         minimum_mistakes_iou = 0.5,
         minimum_mistakes_confidence = 0.5,
         ):
@@ -252,7 +252,7 @@ def run(data,
         mistakes_path.mkdir(exist_ok=True)
         f = mistakes_path / f'val_batch{batch_i}_mistakes.jpg'
 
-        Thread(target=plot_images, args=(img, mistakes, paths, f, names, max_mistakes_size, max_mistakes_subplots), daemon=True).start()
+        Thread(target=plot_images, args=(img, mistakes, paths, f, names, maximum_mistakes_size, maximum_mistakes_subplots), daemon=True).start()
 
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
