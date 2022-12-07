@@ -179,8 +179,10 @@ class Loggers():
         # Callback runs on train batch end
         # ni: number integrated batches (since train start)
         if self.plots:
-            if ni < 3:
-                f = self.save_dir / f'train_batch{ni}.jpg'  # filename
+            if ni < 16:
+                new_save_dir = self.save_dir.joinpath('train_batches')
+                new_save_dir.mkdir(exist_ok = True)
+                f = new_save_dir / f'train_batch{ni}.jpg'  # filename
                 plot_images(imgs, targets, paths, f)
                 if ni == 0 and self.tb and not self.opt.sync_bn:
                     log_tensorboard_graph(self.tb, model, imgsz=(self.opt.imgsz, self.opt.imgsz))

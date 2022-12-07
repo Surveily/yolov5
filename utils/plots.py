@@ -258,8 +258,9 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None):
         mosaic = cv2.resize(mosaic, tuple(int(x * ns) for x in (w, h)))
 
     # Annotate
-    fs = int((h + w) * ns * 0.01)  # font size
+    fs = int((h + w) * ns * 0.005)  # font size
     annotator = Annotator(mosaic, line_width=round(fs / 10), font_size=fs, pil=True, example=names)
+
     for i in range(i + 1):
         x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
         annotator.rectangle([x, y, x + w, y + h], None, (255, 255, 255), width=2)  # borders
@@ -300,7 +301,7 @@ def plot_lr_scheduler(optimizer, scheduler, epochs=300, save_dir=''):
     plt.plot(y, '.-', label='LR')
     plt.xlabel('epoch')
     plt.ylabel('LR')
-    plt.grid()
+#     plt.grid()
     plt.xlim(0, epochs)
     plt.ylim(0)
     plt.savefig(Path(save_dir) / 'LR.png', dpi=200)
@@ -370,7 +371,7 @@ def plot_val_study(file='', dir='', x=None):  # from utils.plots import *; plot_
              alpha=.25,
              label='EfficientDet')
 
-    ax2.grid(alpha=0.2)
+#     ax2.grid(alpha=0.2)
     ax2.set_yticks(np.arange(20, 60, 5))
     ax2.set_xlim(0, 57)
     ax2.set_ylim(25, 55)
@@ -426,6 +427,7 @@ def plot_labels(labels, names=(), save_dir=Path('')):
     plt.savefig(save_dir / 'labels.jpg', dpi=200)
     matplotlib.use('Agg')
     plt.close()
+    plt.style.use('default')
 
 
 def imshow_cls(im, labels=None, pred=None, names=None, nmax=25, verbose=False, f=Path('images.jpg')):

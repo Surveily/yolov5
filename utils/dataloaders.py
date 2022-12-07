@@ -303,7 +303,8 @@ class LoadImages:
         else:
             # Read image
             self.count += 1
-            im0 = cv2.imread(path)  # BGR
+            img0 = cv2.imread(path,cv2.IMREAD_GRAYSCALE)  # BGR
+            img0 = img0.reshape(img0.shape[0],img0.shape[1],1)
             assert im0 is not None, f'Image Not Found {path}'
             s = f'image {self.count}/{self.nf} {path}: '
 
@@ -590,7 +591,7 @@ class LoadImagesAndLabels(Dataset):
         b, gb = 0, 1 << 30  # bytes of cached images, bytes per gigabytes
         n = min(self.n, 30)  # extrapolate from 30 random images
         for _ in range(n):
-            im = cv2.imread(random.choice(self.im_files))  # sample image
+            im = cv2.imread(random.choice(self.im_files), cv2.IMREAD_GRAYSCALE)  # sample image
             ratio = self.img_size / max(im.shape[0], im.shape[1])  # max(h, w)  # ratio
             b += im.nbytes * ratio ** 2
         mem_required = b * self.n / n  # GB required to cache dataset into RAM
@@ -683,7 +684,8 @@ class LoadImagesAndLabels(Dataset):
                                                  translate=hyp['translate'],
                                                  scale=hyp['scale'],
                                                  shear=hyp['shear'],
-                                                 perspective=hyp['perspective'])
+                                                 perspective=hyp['perspective'],
+                                                 area_threshold=hyp['area_threshold'])
 
         nl = len(labels)  # number of labels
         if nl:
@@ -695,7 +697,7 @@ class LoadImagesAndLabels(Dataset):
             nl = len(labels)  # update after albumentations
 
             # HSV color-space
-            augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
+            # augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
             # Flip up-down
             if random.random() < hyp['flipud']:
@@ -718,7 +720,7 @@ class LoadImagesAndLabels(Dataset):
             labels_out[:, 1:] = torch.from_numpy(labels)
 
         # Convert
-        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        #img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
@@ -730,13 +732,16 @@ class LoadImagesAndLabels(Dataset):
             if fn.exists():  # load npy
                 im = np.load(fn)
             else:  # read image
-                im = cv2.imread(f)  # BGR
+                im = cv2.imread(f,cv2.IMREAD_GRAYSCALE)  # BGR
+                im = im.reshape(im.shape[0],im.shape[1],1)
                 assert im is not None, f'Image Not Found {f}'
             h0, w0 = im.shape[:2]  # orig hw
             r = self.img_size / max(h0, w0)  # ratio
             if r != 1:  # if sizes are not equal
                 interp = cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA
                 im = cv2.resize(im, (int(w0 * r), int(h0 * r)), interpolation=interp)
+
+            im = im.reshape(im.shape[0],im.shape[1],1)
             return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
         return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
 
@@ -744,7 +749,7 @@ class LoadImagesAndLabels(Dataset):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
         if not f.exists():
-            np.save(f.as_posix(), cv2.imread(self.im_files[i]))
+            np.save(f.as_posix(), cv2.imread(self.im_files[i],cv2.IMREAD_GRAYSCALE))
 
     def load_mosaic(self, index):
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
@@ -800,7 +805,8 @@ class LoadImagesAndLabels(Dataset):
                                            scale=self.hyp['scale'],
                                            shear=self.hyp['shear'],
                                            perspective=self.hyp['perspective'],
-                                           border=self.mosaic_border)  # border to remove
+                                           border=self.mosaic_border,
+                                           area_threshold=self.hyp['area_threshold'])  # border to remove
 
         return img4, labels4
 
@@ -877,7 +883,8 @@ class LoadImagesAndLabels(Dataset):
                                            scale=self.hyp['scale'],
                                            shear=self.hyp['shear'],
                                            perspective=self.hyp['perspective'],
-                                           border=self.mosaic_border)  # border to remove
+                                           border=self.mosaic_border,
+                                           area_threshold=self.hyp['area_threshold'])  # border to remove
 
         return img9, labels9
 
@@ -1179,13 +1186,13 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
     def __getitem__(self, i):
         f, j, fn, im = self.samples[i]  # filename, index, filename.with_suffix('.npy'), image
         if self.cache_ram and im is None:
-            im = self.samples[i][3] = cv2.imread(f)
+            im = self.samples[i][3] = cv2.imread(f,cv2.IMREAD_GRAYSCALE).reshape(im.shape[0],im.shape[1],1)
         elif self.cache_disk:
             if not fn.exists():  # load npy
-                np.save(fn.as_posix(), cv2.imread(f))
-            im = np.load(fn)
+                np.save(fn.as_posix(), cv2.imread(f,cv2.IMREAD_GRAYSCALE).reshape(im.shape[0],im.shape[1],1))
+            im = np.load(fn).reshape(im.shape[0], im.shape[1], 1)
         else:  # read image
-            im = cv2.imread(f)  # BGR
+            im = cv2.imread(f,cv2.IMREAD_GRAYSCALE).reshape(im.shape[0],im.shape[1],1)  # BGR
         if self.album_transforms:
             sample = self.album_transforms(image=cv2.cvtColor(im, cv2.COLOR_BGR2RGB))["image"]
         else:

@@ -25,9 +25,11 @@ import os
 import sys
 from pathlib import Path
 
+import pandas as pd
 import numpy as np
 import torch
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -44,6 +46,8 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, chec
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
+
+from yolo_analyze_service import YoloAnalyzeService
 
 
 def save_one_txt(predn, save_conf, shape, file):
@@ -124,7 +128,11 @@ def run(
         plots=True,
         callbacks=Callbacks(),
         compute_loss=None,
-):
+        maximum_mistakes_size = 7680,
+        maximum_mistakes_subplots = 64,
+        minimum_mistakes_iou = 0.5,
+        minimum_mistakes_confidence = 0.5,
+        ):
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -168,8 +176,9 @@ def run(
             ncm = model.model.nc
             assert ncm == nc, f'{weights} ({ncm} classes) trained on different --data than what you passed ({nc} ' \
                               f'classes). Pass correct combination of --weights and --data that are trained together.'
-        model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
+        model.warmup(imgsz=(1 if pt else batch_size, 1, imgsz, imgsz))  # warmup
         pad, rect = (0.0, False) if task == 'speed' else (0.5, pt)  # square inference for benchmarks
+
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
         dataloader = create_dataloader(data[task],
                                        imgsz,
@@ -267,6 +276,28 @@ def run(
             plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
             plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
+        
+        if plots and batch_i < 16:
+            max_size=1920
+            max_subplots=16
+
+            valid_labels_path = save_dir.joinpath('labels')
+            valid_predictions_path = save_dir.joinpath('pred')
+            valid_labels_path.mkdir(exist_ok=True)
+            valid_predictions_path.mkdir(exist_ok=True)
+            f = valid_labels_path / f'val_batch{batch_i}_labels.jpg'
+            plot_images(im, targets, paths, f, names, max_size, max_subplots)
+            f = valid_predictions_path / f'val_batch{batch_i}_pred.jpg'  # predictions
+            plot_images(im, output_to_target(preds), paths, f, names, max_size, max_subplots)
+        
+        yolo_analyzer = YoloAnalyzeService(minimum_mistakes_iou, minimum_mistakes_confidence)
+        mistakes = yolo_analyzer.analyze_batch(targets.cpu().numpy(), output_to_target(preds))
+        mistakes_path = save_dir.joinpath("mistakes")
+        mistakes_path.mkdir(exist_ok=True)
+        f = mistakes_path / f'val_batch{batch_i}_mistakes.jpg'
+
+        plot_images(im, mistakes, paths, f, names, maximum_mistakes_size, maximum_mistakes_subplots)
+
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
 
     # Compute metrics
@@ -284,10 +315,51 @@ def run(
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Print results per class
-    if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+    if training and not verbose and (nc < 50 and nc > 1 and len(stats)):
+        for i, c in enumerate(ap_class):
+            save_path = save_dir.joinpath('classes').joinpath(names[c]+'.csv')
+            df = pd.DataFrame({'mAP.5': [ap50[i]], 'mAP': [ap[i]]})
+            df.to_csv(str(save_path), mode='a', index=False, header=not save_path.exists())
+                
+    if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):        
+        plt.figure(figsize=(16, 12), dpi=150) 
+        last_results = []
         for i, c in enumerate(ap_class):
             LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
+            load_path = save_dir.joinpath('classes').joinpath(names[c]+'.csv')
+            df = pd.read_csv(str(load_path))
+            x = np.arange(df.shape[0])
+            last_results.append((names[c], np.array(df.tail(1))))
+            plt.plot(x, df['mAP.5'], label='mAP.5{}'.format(names[c]))
+            plt.plot(x, df['mAP'], label='mAP{}'.format(names[c]))
+        plt.legend(loc="upper left")
+        plt.savefig(load_path.parent.joinpath('AllClasses.png'))
+        reset_plot()
+        
+        class_names = [item[0] for item in last_results]
+        mAP5s = np.multiply([item[1][0][0] for item in last_results], 100)
+        mAPs = np.multiply([item[1][0][1] for item in last_results], 100)
+        
+        x = np.arange(len(class_names))  # the label locations
+        width = 0.35  # the width of the bars
+        
+        fig, ax = plt.subplots(figsize=(20, 10))
+        fig.set_dpi(150)
+        rects1 = ax.bar(x - width/2, mAP5s, width, label='mAP.5')
+        rects2 = ax.bar(x + width/2, mAPs, width, label='mAP')
+
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_ylabel('Percentage')
+        ax.set_title('mAP by class')
+        plt.xticks([r + (width * 0.1) for r in range(len(class_names))], class_names, rotation=90)
+        ax.legend()
+
+        ax.bar_label(rects1, padding=3)
+        ax.bar_label(rects2, padding=3)
+        plt.savefig(save_dir.joinpath('mAP_summary.png'))
+        reset_plot()
+    
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
     if not training:
@@ -335,7 +407,13 @@ def run(
         maps[c] = ap[i]
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
-
+def reset_plot():
+    plt.figure().clear()
+    plt.close()
+    plt.cla()
+    plt.clf()  
+    plt.figure(figsize=(6.4, 4.8), dpi=100) 
+    
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
