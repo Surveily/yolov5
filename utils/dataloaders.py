@@ -303,16 +303,18 @@ class LoadImages:
         else:
             # Read image
             self.count += 1
-            img0 = cv2.imread(path,cv2.IMREAD_GRAYSCALE)  # BGR
-            img0 = img0.reshape(img0.shape[0],img0.shape[1],1)
+            img0 = cv2.imread(path,cv2.IMREAD_GRAYSCALE)  # GRAY
+            img0 = img0.reshape(img0.shape[0],img0.shape[1],1) 
             assert im0 is not None, f'Image Not Found {path}'
             s = f'image {self.count}/{self.nf} {path}: '
 
         if self.transforms:
             im = self.transforms(im0)  # transforms
+            im = im.reshape(im.shape[0], im.shape[1], 1)
         else:
             im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
-            im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            # im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            im = im.reshape(im.shape[0], im.shape[1], 1) # GRAY
             im = np.ascontiguousarray(im)  # contiguous
 
         return path, im, im0, self.cap, s
@@ -592,6 +594,7 @@ class LoadImagesAndLabels(Dataset):
         n = min(self.n, 30)  # extrapolate from 30 random images
         for _ in range(n):
             im = cv2.imread(random.choice(self.im_files), cv2.IMREAD_GRAYSCALE)  # sample image
+            im = im.reshape(im.shape[0], im.shape[1], 1)
             ratio = self.img_size / max(im.shape[0], im.shape[1])  # max(h, w)  # ratio
             b += im.nbytes * ratio ** 2
         mem_required = b * self.n / n  # GB required to cache dataset into RAM
@@ -721,6 +724,7 @@ class LoadImagesAndLabels(Dataset):
 
         # Convert
         #img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        img = img.reshape(1, img.shape[0], img.shape[1])
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
@@ -749,7 +753,8 @@ class LoadImagesAndLabels(Dataset):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
         if not f.exists():
-            np.save(f.as_posix(), cv2.imread(self.im_files[i],cv2.IMREAD_GRAYSCALE))
+            image = cv2.imread(self.im_files[i],cv2.IMREAD_GRAYSCALE)
+            np.save(f.as_posix(), image.reshape(image.shape[0], image.shape[1], 1))
 
     def load_mosaic(self, index):
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
@@ -1186,13 +1191,17 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
     def __getitem__(self, i):
         f, j, fn, im = self.samples[i]  # filename, index, filename.with_suffix('.npy'), image
         if self.cache_ram and im is None:
-            im = self.samples[i][3] = cv2.imread(f,cv2.IMREAD_GRAYSCALE).reshape(im.shape[0],im.shape[1],1)
+            img = cv2.imread(f,cv2.IMREAD_GRAYSCALE)
+            im = self.samples[i][3] = img.reshape(img.shape[0],img.shape[1],1)
         elif self.cache_disk:
             if not fn.exists():  # load npy
-                np.save(fn.as_posix(), cv2.imread(f,cv2.IMREAD_GRAYSCALE).reshape(im.shape[0],im.shape[1],1))
-            im = np.load(fn).reshape(im.shape[0], im.shape[1], 1)
+                img = cv2.imread(f,cv2.IMREAD_GRAYSCALE)
+                np.save(fn.as_posix(), img.reshape(img.shape[0],img.shape[1],1))
+            im = np.load(fn)
+            im = im.reshape(im.shape[0], im.shape[1], 1)
         else:  # read image
-            im = cv2.imread(f,cv2.IMREAD_GRAYSCALE).reshape(im.shape[0],im.shape[1],1)  # BGR
+            im = cv2.imread(f,cv2.IMREAD_GRAYSCALE)
+            im = im.reshape(im.shape[0],im.shape[1],1)  # BGR
         if self.album_transforms:
             sample = self.album_transforms(image=cv2.cvtColor(im, cv2.COLOR_BGR2RGB))["image"]
         else:
