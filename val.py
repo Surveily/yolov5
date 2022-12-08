@@ -177,7 +177,10 @@ def run(
             ncm = model.model.nc
             assert ncm == nc, f'{weights} ({ncm} classes) trained on different --data than what you passed ({nc} ' \
                               f'classes). Pass correct combination of --weights and --data that are trained together.'
-        model.warmup(imgsz=(1 if pt else batch_size, 1, imgsz, imgsz))  # warmup
+        if rgb_mode:
+            model.warmup(imgsz=(3 if pt else batch_size, 1, imgsz, imgsz))  # warmup
+        else:    
+            model.warmup(imgsz=(1 if pt else batch_size, 1, imgsz, imgsz))  # warmup
         pad, rect = (0.0, False) if task == 'speed' else (0.5, pt)  # square inference for benchmarks
 
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
@@ -440,7 +443,7 @@ def parse_opt():
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
-    parser.add_argument('--rgb', action='store_true', help='train model in grayscale mode, with image_channels=1.')
+    parser.add_argument('--rgb-mode', action='store_true', help='train model in rgb mode, with image_channels=3.')
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')

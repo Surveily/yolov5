@@ -400,6 +400,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                plots=False,
                                                callbacks=callbacks,
                                                compute_loss=compute_loss,
+                                               rgb_mode=opt.rgb_mode,
                                                maximum_mistakes_size=hyp['maximum_mistakes_size'],
                                                maximum_mistakes_subplots=hyp['maximum_mistakes_subplots'],
                                                minimum_mistakes_iou=hyp['minimum_mistakes_iou'],
@@ -470,7 +471,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 verbose=True,
                                                 plots=plots,
                                                 callbacks=callbacks,
-                                                compute_loss=compute_loss)  # val best model with plots
+                                                compute_loss=compute_loss,
+                                                rgb_mode=opt.rgb_mode,
+                                                maximum_mistakes_size=hyp['maximum_mistakes_size'],
+                                                maximum_mistakes_subplots=hyp['maximum_mistakes_subplots'],
+                                                minimum_mistakes_iou=hyp['minimum_mistakes_iou'],
+                                                minimum_mistakes_confidence=hyp['minimum_mistakes_confidence']
+                                                )  # val best model with plots
                         if is_coco:
                             callbacks.run('on_fit_epoch_end', list(mloss) + list(results) + lr, epoch, best_fitness, fi)
 
@@ -517,7 +524,7 @@ def parse_opt(known=False):
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
-    parser.add_argument('--rgb-mode', action='store_true', help='train model in grayscale mode, with image_channels=1.')
+    parser.add_argument('--rgb-mode', action='store_true', help='train model in rgb mode, with image_channels=3.')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
