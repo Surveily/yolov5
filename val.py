@@ -128,6 +128,7 @@ def run(
         plots=True,
         callbacks=Callbacks(),
         compute_loss=None,
+        rgb_mode=False,
         maximum_mistakes_size = 7680,
         maximum_mistakes_subplots = 64,
         minimum_mistakes_iou = 0.5,
@@ -188,7 +189,8 @@ def run(
                                        pad=pad,
                                        rect=rect,
                                        workers=workers,
-                                       prefix=colorstr(f'{task}: '))[0]
+                                       prefix=colorstr(f'{task}: '),
+                                       rgb_mode=rgb_mode)[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
@@ -438,6 +440,7 @@ def parse_opt():
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--rgb', action='store_true', help='train model in grayscale mode, with image_channels=1.')
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')

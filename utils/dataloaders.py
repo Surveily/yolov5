@@ -115,7 +115,8 @@ def create_dataloader(path,
                       image_weights=False,
                       quad=False,
                       prefix='',
-                      shuffle=False):
+                      shuffle=False,
+                      rgb_mode=False):
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
@@ -132,7 +133,8 @@ def create_dataloader(path,
             stride=int(stride),
             pad=pad,
             image_weights=image_weights,
-            prefix=prefix)
+            prefix=prefix,
+            rgb_mode=rgb_mode)
 
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
@@ -451,7 +453,8 @@ class LoadImagesAndLabels(Dataset):
                  stride=32,
                  pad=0.0,
                  min_items=0,
-                 prefix=''):
+                 prefix='',
+                 rgb_mode=False):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -462,6 +465,7 @@ class LoadImagesAndLabels(Dataset):
         self.stride = stride
         self.path = path
         self.albumentations = Albumentations(size=img_size) if augment else None
+        self.rgb_mode = rgb_mode
 
         try:
             f = []  # image files
@@ -593,8 +597,11 @@ class LoadImagesAndLabels(Dataset):
         b, gb = 0, 1 << 30  # bytes of cached images, bytes per gigabytes
         n = min(self.n, 30)  # extrapolate from 30 random images
         for _ in range(n):
-            im = cv2.imread(random.choice(self.im_files), cv2.IMREAD_GRAYSCALE)  # sample image
-            im = im.reshape(im.shape[0], im.shape[1], 1)
+            if self.rgb_mode:
+                im = cv2.imread(random.choice(self.im_files)) 
+            else:
+                im = cv2.imread(random.choice(self.im_files), cv2.IMREAD_GRAYSCALE)  # sample image
+                im = im.reshape(im.shape[0], im.shape[1], 1)
             ratio = self.img_size / max(im.shape[0], im.shape[1])  # max(h, w)  # ratio
             b += im.nbytes * ratio ** 2
         mem_required = b * self.n / n  # GB required to cache dataset into RAM
@@ -723,8 +730,10 @@ class LoadImagesAndLabels(Dataset):
             labels_out[:, 1:] = torch.from_numpy(labels)
 
         # Convert
-        #img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
-        img = img.reshape(1, img.shape[0], img.shape[1])
+        if self.rgb_mode:
+            img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        else:
+            img = img.reshape(1, img.shape[0], img.shape[1])
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes
@@ -736,8 +745,11 @@ class LoadImagesAndLabels(Dataset):
             if fn.exists():  # load npy
                 im = np.load(fn)
             else:  # read image
-                im = cv2.imread(f,cv2.IMREAD_GRAYSCALE)  # BGR
-                im = im.reshape(im.shape[0],im.shape[1],1)
+                if self.rgb_mode:
+                    im = cv2.imread(f)
+                else:
+                    im = cv2.imread(f,cv2.IMREAD_GRAYSCALE)  # BGR
+                    im = im.reshape(im.shape[0],im.shape[1],1)
                 assert im is not None, f'Image Not Found {f}'
             h0, w0 = im.shape[:2]  # orig hw
             r = self.img_size / max(h0, w0)  # ratio
@@ -745,7 +757,8 @@ class LoadImagesAndLabels(Dataset):
                 interp = cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA
                 im = cv2.resize(im, (int(w0 * r), int(h0 * r)), interpolation=interp)
 
-            im = im.reshape(im.shape[0],im.shape[1],1)
+            if not self.rgb_mode:
+                im = im.reshape(im.shape[0],im.shape[1],1)
             return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
         return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
 
@@ -753,8 +766,11 @@ class LoadImagesAndLabels(Dataset):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
         if not f.exists():
-            image = cv2.imread(self.im_files[i],cv2.IMREAD_GRAYSCALE)
-            np.save(f.as_posix(), image.reshape(image.shape[0], image.shape[1], 1))
+            if self.rgb_mode:
+                np.save(f.as_posix(), cv2.imread(self.im_files[i]))
+            else:
+                image = cv2.imread(self.im_files[i],cv2.IMREAD_GRAYSCALE)
+                np.save(f.as_posix(), image.reshape(image.shape[0], image.shape[1], 1))
 
     def load_mosaic(self, index):
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic

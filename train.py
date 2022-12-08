@@ -222,7 +222,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               image_weights=opt.image_weights,
                                               quad=opt.quad,
                                               prefix=colorstr('train: '),
-                                              shuffle=True)
+                                              shuffle=True,
+                                              rgb_mode=opt.rgb_mode)
 
     if dataset.albumentations.transform is not None:
         augemntations = {str(number+1):str(transform) for number,transform in enumerate(dataset.albumentations.transform.transforms) if transform.p}
@@ -256,7 +257,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 rank=-1,
                                                 workers=workers, 
                                                 pad=0.5,
-                                                prefix=colorstr('val: '))[0])
+                                                prefix=colorstr('val: '))[0],
+                                                rgb_mode=opt.rgb_mode)
         if not resume:
             if not opt.noautoanchor:
                 check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)  # run AutoAnchor
@@ -515,6 +517,7 @@ def parse_opt(known=False):
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
+    parser.add_argument('--rgb-mode', action='store_true', help='train model in grayscale mode, with image_channels=1.')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
