@@ -117,15 +117,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if type(val_paths) == list:
         print('Detected {} validation sets'.format(len(val_paths)))
         multi_val = True
-    for index, val_path in enumerate(val_paths if type(val_paths) == list else [val_paths]):
-        temp_val_path = ''.join([c for c in val_path if c.isalpha()]).lower()
-        if 'validyolo' in temp_val_path:
-            temp_val_path = val_path[:len(val_path)-11]
-        elif len(temp_val_path) >= 3:
-            temp_val_path = temp_val_path[:3]
-        else:
-            temp_val_path = str(index)
-        best.append(w.joinpath('best_' + str(Path(temp_val_path).stem) + '.pt'))
+    for val_path in val_paths if type(val_paths) == list else [val_paths]:
+        temp_val_path = Path(val_path).stem.replace("Valid", "").replace("Yolo", "")
+        
+        best.append(w.joinpath(f'best_{temp_val_path}.pt'))
         temp_val_path = Path(save_dir.joinpath('results_' + temp_val_path))
         temp_val_path.mkdir(exist_ok=True)
         temp_val_path.joinpath('classes').mkdir(exist_ok=True)
@@ -154,6 +149,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     else:
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     amp = check_amp(model)  # check AMP
+    amp = True
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
@@ -257,8 +253,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 rank=-1,
                                                 workers=workers, 
                                                 pad=0.5,
-                                                prefix=colorstr('val: '))[0],
-                                                rgb_mode=opt.rgb_mode)
+                                                prefix=colorstr('val: '),
+                                                rgb_mode=opt.rgb_mode)[0])
         if not resume:
             if not opt.noautoanchor:
                 check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)  # run AutoAnchor
