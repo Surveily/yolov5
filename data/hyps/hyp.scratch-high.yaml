@@ -32,3 +32,10 @@ fliplr: 0.5  # image flip left-right (probability)
 mosaic: 1.0  # image mosaic (probability)
 mixup: 0.1  # image mixup (probability)
 copy_paste: 0.1  # segment copy-paste (probability)
+
+# Custom Params
+area_threshold: 0.3 # area threshold for random perspective
+maximum_mistakes_size: 7680 # image size for mistakes mosaic
+maximum_mistakes_subplots: 64 # subimages in mistakes mosaic
+minimum_mistakes_iou: 0.5 # mistakes minimum iou for match
+minimum_mistakes_confidence: 0.5 # mistakes minimum confidence for checking
