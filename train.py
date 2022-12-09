@@ -117,7 +117,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if type(val_paths) == list:
         print('Detected {} validation sets'.format(len(val_paths)))
         multi_val = True
-    for val_path in val_paths if type(val_paths) == list else [val_paths]:
+
+    for val_path in (val_paths if multi_val else [val_paths]):
         temp_val_path = Path(val_path).stem.replace("Valid", "").replace("Yolo", "")
         
         best.append(w.joinpath(f'best_{temp_val_path}.pt'))
@@ -150,7 +151,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     amp = check_amp(model)  # check AMP
     amp = True
-
+    
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
     for k, v in model.named_parameters():
